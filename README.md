@@ -14,7 +14,7 @@ Plotly Dash web app that estimates calories & nutrition from food photos.
 ```
 git clone https://github.com/songholmes/FoodLensApp
 
-cd food-lens-app
+cd FoodLensApp
 
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
