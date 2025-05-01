@@ -1,0 +1,10 @@
+__pycache__/
+.git/
+node_modules/
+.venv
+Procfile
+.env
+prod_env
+credentials
+.idea
+requirements_dev.txt

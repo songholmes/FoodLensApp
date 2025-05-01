@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+prod_venv/
+
+# IDE config
+.idea/
+
+# Mac OS
+.DS_Store
+
+# Env files (避免敏感信息泄露)
+.env
+.env.*
+
+# Credentials (非常敏感，不要上传)
+credentials/
+
+# Logs
+*.log
+
+# Jupyter notebooks checkpoint
+notebooks/.ipynb_checkpoints/
+
+# Docker
+*.pid
+docker-compose.override.yml
