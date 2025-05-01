@@ -20,7 +20,7 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 
 pip install -r requirements_prod.txt
 
-python index.py           # http://localhost:8050
+python index.py           # http://localhost:3002
 ```
 
 ### Docker
