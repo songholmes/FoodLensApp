@@ -62,96 +62,109 @@ server = app.server
 # Secret key for session management
 app.server.secret_key = os.urandom(24)
 
-# Configure OIDC Authentication
-auth = OIDCAuth(
-    app,
-    secret_key=app.server.secret_key,
-    idp_selection_route="/login",
-    # If you want a different URL prefix for the auth routes, specify here, e.g. url_prefix="/auth"
-)
-
-## if should be mentioned that in OIDCAuth.login_request, there is logic:
-# 'if len(self.oauth._registry) == 1: idp = next(iter(self.oauth._clients))', which means if only one provider is
-# set, then will skip the login selection part
-
 # Provider 1: Google
-google_client_id = os.getenv("GOOGLE_CLIENT_ID")  # Reads from system environment variables
-google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-# Register Google as the Identity Provider (IdP)
-auth.register_provider(
-    idp_name="Google",
-    client_id=google_client_id,  # Replace with your Google Client ID
-    client_secret=google_client_secret,  # Replace with your Google Client Secret
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    authorize_params={"scope": "openid email profile"},
-    token_endpoint_auth_method="client_secret_post",
-)
+google_client_id = os.getenv("GOOGLE_CLIENT_ID", None)  # Reads from system environment variables
+google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", None)
 
-@app.server.route("/login", methods=["GET", "POST"])
-def login_handler():
-    """Handles the /login route for IDP selection."""
-    if request.method == "POST":
-        idp = request.form.get("idp")
-    else:
-        idp = request.args.get("idp")
+# If the Google API credentials are not provided properly
+if google_client_id is None or google_client_secret is None:
+    print("No Google API credentials provided, username function will not work")
 
-    if idp is not None:
-        # This calls the OIDCAuth-generated endpoint named "oidc_login"
-        return redirect(url_for("oidc_login", idp=idp))
-
-    return render_template('oidc_login_page.html')
-
-
-# -------------------------------------------------
-# Callback to Enforce Whitelist Check
-# -------------------------------------------------
-def register_auth_app(app):
-    @app.callback(
-        Output("url", "pathname"),
-        Output("username", "children"),
-        Input("placeholder", "children")
+    def register_auth_app(app):
+        pass
+else:
+    # Configure OIDC Authentication
+    auth = OIDCAuth(
+        app,
+        secret_key=app.server.secret_key,
+        idp_selection_route="/login",
+        # If you want a different URL prefix for the auth routes, specify here, e.g. url_prefix="/auth"
     )
-    def check_user(_):
+    print('''
+    Google API credentials are provided, make sure you set up http://localhost:8050/oidc/callback in Oauth provider like
+    Google API properly. And if run with docker, it won't work with IP address, since google only support domain name or
+    localhost
+    ''')
+
+    ## if should be mentioned that in OIDCAuth.login_request, there is logic:
+    # 'if len(self.oauth._registry) == 1: idp = next(iter(self.oauth._clients))', which means if only one provider is
+    # set, then will skip the login selection part
+
+    # Register Google as the Identity Provider (IdP)
+    auth.register_provider(
+        idp_name="Google",
+        client_id=google_client_id,  # Replace with your Google Client ID
+        client_secret=google_client_secret,  # Replace with your Google Client Secret
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        authorize_params={"scope": "openid email profile"},
+        token_endpoint_auth_method="client_secret_post",
+    )
+
+    @app.server.route("/login", methods=["GET", "POST"])
+    def login_handler():
+        """Handles the /login route for IDP selection."""
+        if request.method == "POST":
+            idp = request.form.get("idp")
+        else:
+            idp = request.args.get("idp")
+
+        if idp is not None:
+            # This calls the OIDCAuth-generated endpoint named "oidc_login"
+            return redirect(url_for("oidc_login", idp=idp))
+
+        return render_template('oidc_login_page.html')
+
+
+    # -------------------------------------------------
+    # Callback to Enforce Whitelist Check
+    # -------------------------------------------------
+    def register_auth_app(app):
+        @app.callback(
+            Output("url", "pathname"),
+            Output("username", "children"),
+            Input("placeholder", "children")
+        )
+        def check_user(_):
+            user_info = session.get("user")
+            email = user_info.get("email") if user_info else None
+
+            if not email:
+                return "/login", no_update
+
+            whitelist = set(query_email_to_list())
+            # whitelist.remove("songyangholmes@gmail.com")
+
+            if email in whitelist:
+                return no_update, email.split('@')[0]
+            else:
+                # Redirect to password challenge if not whitelisted
+                return "/password_challenge", no_update
+
+
+    @app.server.route("/password_challenge", methods=["GET", "POST"])
+    def password_challenge():
         user_info = session.get("user")
         email = user_info.get("email") if user_info else None
 
         if not email:
-            return "/login", no_update
+            return redirect("/login")
 
-        whitelist = set(query_email_to_list())
-        # whitelist.remove("songyangholmes@gmail.com")
+        if request.method == "POST":
+            answer = request.form.get("answer")
 
-        if email in whitelist:
-            return no_update, email.split('@')[0]
-        else:
-            # Redirect to password challenge if not whitelisted
-            return "/password_challenge", no_update
+            # Write to DynamoDB whitelist
+            con = sl.connect(WHITE_LIST_DB_PATH)
+            cur = con.cursor()
+            timestamped_answer = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "|" + answer
+            cur.execute("INSERT INTO foodlens_gmail_whitelist_dev VALUES (?, ?)",
+                        (email, timestamped_answer))
+            con.commit()
+            return redirect("/")
 
-
-@app.server.route("/password_challenge", methods=["GET", "POST"])
-def password_challenge():
-    user_info = session.get("user")
-    email = user_info.get("email") if user_info else None
-
-    if not email:
-        return redirect("/login")
-
-    if request.method == "POST":
-        answer = request.form.get("answer")
-
-        # Write to DynamoDB whitelist
-        con = sl.connect(WHITE_LIST_DB_PATH)
-        cur = con.cursor()
-        timestamped_answer = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "|" + answer
-        cur.execute("INSERT INTO foodlens_gmail_whitelist_dev VALUES (?, ?)",
-                    (email, timestamped_answer))
-        con.commit()
-        return redirect("/")
-
-    return render_template_string("""
-    <h3>Welcome {{ username }}, how did you find this website?</h3>
-    <form method="POST">
-        Your Answer: <input type="text" name="answer" />
-        <input type="submit" />
-    </form>
-""")
+        return render_template_string("""
+        <h3>Welcome {{ username }}, how did you find this website?</h3>
+        <form method="POST">
+            Your Answer: <input type="text" name="answer" />
+            <input type="submit" />
+        </form>
+    """)

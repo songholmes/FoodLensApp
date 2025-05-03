@@ -95,7 +95,6 @@ def write_record_to_db(table_name, user_id, new_records_df):
 
     # Register the creation time before upload
     df_['create_timestamp'] = datetime.now().isoformat()
-    print(df_)
     df_.to_sql(table_name, con, if_exists='append', index=False)
 
 
