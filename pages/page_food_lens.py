@@ -431,12 +431,12 @@ def register_callback(app):
                   State("username", "children"),
                   State('upload-food-image-path', 'data')
                   )
-    def upload_calorie_data_to_aws(n_clicks, calorie_data, username, upload_img_path):
+    def upload_calorie_data_to_db(n_clicks, calorie_data, username, upload_img_path):
         if calorie_data is None:
             raise PreventUpdate()
         if n_clicks > 0:
             calorie_data_df = pd.DataFrame.from_records(calorie_data)
-            write_record_to_dynamodb('foodlens-records-dev', username, calorie_data_df)
+            write_record_to_db('foodlens_records_dev', username, calorie_data_df)
             Path(upload_img_path).unlink(missing_ok=True) # If ok to upload to DB, then remove image
             return 'Upload Calorie Data Successfully'
 

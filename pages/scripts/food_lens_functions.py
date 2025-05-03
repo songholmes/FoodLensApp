@@ -18,6 +18,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from PIL import Image
 from plotly.subplots import make_subplots
+import os
 
 # 额外加上对HEIC的支持
 try:
@@ -29,9 +30,9 @@ except ImportError:
     # 可以抛异常，也可以仅做提醒
     print("Warning: pillow_heif not installed. iPhone HEIC images may fail to open.")
 
-# ======================== AWS Related ====================================
-import boto3
-from boto3.dynamodb.conditions import Key
+# ======================== SQLite Related ====================================
+import sqlite3
+import sqlite3 as sl
 
 # ======================== LLM Import ====================================
 from typing import List
@@ -53,32 +54,39 @@ header_name_mapping = {'food_item': 'Food Item', 'portion': 'Portion', 'calories
 
 
 # %% ===========================================================================
-# # AWS Write or Read
+# # Sqlite Write or Read
 # =============================================================================
-def convert_floats(obj):
-    if isinstance(obj, float):
-        return Decimal(str(obj))
-    if isinstance(obj, dict):
-        return {k: convert_floats(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [convert_floats(i) for i in obj]
-    return obj
+FOOD_LENS_APP_DB_PATH = os.path.join(os.getcwd(), 'data', 'food_lens_app.db')
+
+def create_initial_food_records_dbs():
+    con = sqlite3.connect(FOOD_LENS_APP_DB_PATH)
+    cur = con.cursor()
+    # Food records table
+    cur.execute("""
+    CREATE TABLE foodlens_records_dev (
+        user_id TEXT,
+        timestamp TEXT,
+        calories INTEGER,
+        carbs_g REAL,
+        create_timestamp TEXT,
+        fat_g REAL,
+        food_item TEXT,
+        meal_date TEXT,
+        meal_type TEXT,
+        portion TEXT,
+        protein_g REAL,
+        saturated_fat_g REAL
+    )
+    """)
+
+    res = cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='foodlens_records_dev'")
+    assert res.fetchone() is not None, "foodlens_records_dev Table is not created correctly"
+
+    con.commit()
 
 
-# 工具函数：递归把 DynamoDB 的 Decimal 转成 float
-def convert_decimals(obj):
-    if isinstance(obj, list):
-        return [convert_decimals(i) for i in obj]
-    if isinstance(obj, dict):
-        return {k: convert_decimals(v) for k, v in obj.items()}
-    if isinstance(obj, Decimal):
-        return float(obj) if obj % 1 else int(obj)
-    return obj
-
-
-def write_record_to_dynamodb(table_name, user_id, new_records_df):
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(table_name)
+def write_record_to_db(table_name, user_id, new_records_df):
+    con = sl.connect(FOOD_LENS_APP_DB_PATH)
 
     df_ = new_records_df.copy()
     timestamp = datetime.now().strftime('%H%M%S')
@@ -87,42 +95,25 @@ def write_record_to_dynamodb(table_name, user_id, new_records_df):
 
     # Register the creation time before upload
     df_['create_timestamp'] = datetime.now().isoformat()
-
-    with table.batch_writer() as batch:
-        for item in df_.to_dict('records'):
-            batch.put_item(Item=convert_floats(item))
+    print(df_)
+    df_.to_sql(table_name, con, if_exists='append', index=False)
 
 
 # 主函数：输入表名、用户 ID、时间范围，返回 DataFrame
 def query_user_records_to_dataframe(table_name, user_id, start_datetime, end_datetime):
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(table_name)
+    con = sl.connect(FOOD_LENS_APP_DB_PATH)
 
-    # 时间范围字符串，前缀匹配用
-    start_prefix = start_datetime.strftime('%Y-%m-%d')+'|'
-    end_prefix = end_datetime.strftime('%Y-%m-%d')+'|~'
+    # 构造前缀匹配范围
+    start_prefix = start_datetime.strftime('%Y-%m-%d') + '|'
+    end_prefix = end_datetime.strftime('%Y-%m-%d') + '|~'
 
-    response = table.query(
-        KeyConditionExpression=Key('user_id').eq(user_id) &
-                               Key('timestamp').between(start_prefix, end_prefix)  # 加 '~' 确保包含所有食物
-    )
-
-    items = response['Items']
-
-    # 分页处理：如果有多页结果
-    while 'LastEvaluatedKey' in response:
-        response = table.query(
-            KeyConditionExpression=Key('user_id').eq(user_id) &
-                                   Key('timestamp').between(start_prefix, end_prefix + '|zzz'),
-            ExclusiveStartKey=response['LastEvaluatedKey']
-        )
-        items.extend(response['Items'])
-
-    # 处理 Decimal 类型
-    items = convert_decimals(items)
-
-    # 转成 DataFrame
-    df = pd.DataFrame(items)
+    # 执行 SQL 查询
+    df = pd.read_sql("""
+        SELECT * FROM foodlens_records_dev
+        WHERE user_id = ?
+          AND timestamp >= ?
+          AND timestamp <= ?
+    """, con, params=(user_id, start_prefix, end_prefix))
 
     if not df.empty:
         # 拆分 timestamp 成两列：date_time 和 food_item
@@ -133,6 +124,9 @@ def query_user_records_to_dataframe(table_name, user_id, start_datetime, end_dat
 
     return df
 
+if not os.path.exists(FOOD_LENS_APP_DB_PATH):
+    print(f'Create new db file in {FOOD_LENS_APP_DB_PATH}')
+    create_initial_food_records_dbs()
 
 # %% ===========================================================================
 # # I/O Related Functions

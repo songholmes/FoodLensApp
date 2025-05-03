@@ -11,21 +11,45 @@ from dash_auth import OIDCAuth
 from flask import session, redirect, url_for, request, render_template, render_template_string
 import boto3
 from datetime import datetime
+import sqlite3 as sl
+import pandas as pd
 
 # from dotenv import load_dotenv
 #
 # load_dotenv()  # Load environment variables from .env file
 
+WHITE_LIST_DB_PATH = r'data\foodlens_gmail_whitelist_dev.db'
+
+
+def create_initial_whitelist_db():
+    con = sl.connect(WHITE_LIST_DB_PATH)
+    cur = con.cursor()
+
+    # Email White List Table
+    cur.execute("""
+    CREATE TABLE foodlens_gmail_whitelist_dev (
+        user_id TEXT,
+        timestamp TEXT
+    )
+    """)
+
+    res = cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='foodlens_gmail_whitelist_dev'")
+    assert res.fetchone() is not None, "foodlens_gmail_whitelist_dev Table is not created correctly"
+
+    con.commit()
+
+
 def query_email_to_list():
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('foodlens-gmail-whitelist-dev')
+    con = sl.connect(WHITE_LIST_DB_PATH)
 
-    response = table.scan()
-
-    items = response['Items']
-    user_id_list = [item['user_id'] for item in items]
+    response = pd.read_sql(""" SELECT * FROM foodlens_gmail_whitelist_dev """, con)
+    user_id_list = list(response['user_id'].unique())
 
     return user_id_list
+
+if not os.path.exists(WHITE_LIST_DB_PATH):
+    print(f'Create new db file in {WHITE_LIST_DB_PATH}')
+    create_initial_whitelist_db()
 
 FA = "https://use.fontawesome.com/releases/v5.12.1/css/all.css"
 
@@ -108,7 +132,6 @@ def register_auth_app(app):
 def password_challenge():
     user_info = session.get("user")
     email = user_info.get("email") if user_info else None
-    username = email.split("@")[0] if email else None
 
     if not email:
         return redirect("/login")
@@ -117,10 +140,12 @@ def password_challenge():
         answer = request.form.get("answer")
 
         # Write to DynamoDB whitelist
-        dynamodb = boto3.resource('dynamodb')
-        table = dynamodb.Table('foodlens-gmail-whitelist-dev')
-        table.put_item(Item={"user_id": email,
-                             'timestamp': str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+'|'+answer})
+        con = sl.connect(WHITE_LIST_DB_PATH)
+        cur = con.cursor()
+        timestamped_answer = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "|" + answer
+        cur.execute("INSERT INTO foodlens_gmail_whitelist_dev VALUES (?, ?)",
+                    (email, timestamped_answer))
+        con.commit()
         return redirect("/")
 
     return render_template_string("""

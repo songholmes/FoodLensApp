@@ -280,4 +280,4 @@ app.index_string = '''
 if __name__ == "__main__":
     # Official launched a more neat version for multi-page: https://dash.plotly.com/urls
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # If http test
-    app.run_server(host='0.0.0.0', port=3002, debug=False)
+    app.run_server(host='0.0.0.0', port=3002, debug=True)

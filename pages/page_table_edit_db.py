@@ -13,9 +13,8 @@ import dash_ag_grid as dag
 import os
 
 db_file_path = os.path.join(os.getcwd(), 'data', 'tutorial.db')
-print(f'Current db file location: {db_file_path}')
 if not os.path.exists(db_file_path):
-    from scripts.generate_initial_db import get_initial_db
+    from .scripts.generate_initial_db import get_initial_db
     print(f'Create new db file in {db_file_path}')
     get_initial_db(db_path=db_file_path)
 
