@@ -18,7 +18,7 @@ import pandas as pd
 #
 # load_dotenv()  # Load environment variables from .env file
 
-WHITE_LIST_DB_PATH = r'data\foodlens_gmail_whitelist_dev.db'
+WHITE_LIST_DB_PATH = os.path.join(os.getcwd(), 'data', 'foodlens_gmail_whitelist_dev.db')
 
 
 def create_initial_whitelist_db():
