@@ -12,6 +12,7 @@ import uuid
 import warnings
 from datetime import datetime, date
 from pathlib import Path
+import json
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -26,21 +27,173 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 from dash.exceptions import PreventUpdate
 from .scripts.food_lens_functions import *
-from .scripts.generate_graph import graph
-# ======================== LLM Import ====================================
-from langchain_openai import ChatOpenAI
-
-# ======================== AWS Related ====================================
-# from dotenv import load_dotenv
-#
-# load_dotenv()  # Load environment variables from .env file
+from .scripts.generate_graph import graph, get_llm
 
 warnings.filterwarnings("ignore")
 tz = ZoneInfo("Asia/Singapore")
 
+# dummy image with 32x32
+dummy_test_b64_img = ("iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NMQE"
+                      "AAAjDMMC/ZzDBvlRA01vZJvwHAAAAAAAAAAAAbx2jxAE/i2AjOgAAAABJRU5ErkJggg==")
+test_img_prompt = [
+    {"role": "user", "content": [
+        {"type": "text", "text": "What do you see in this image?"},
+        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{dummy_test_b64_img}"}}
+    ]
+     }
+]
+
+
+
 # %% ===========================================================================
 # # UI Layout
 # =============================================================================
+tab0_subtab_0 = html.Div(
+    [
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Label("Provider", id='provider-label', html_for="llm-provider-dpn"),
+                        dcc.Dropdown(
+                            id="llm-provider-dpn",
+                            options=[{'label': m, 'value': m} for m in
+                                     ['openai', 'azure', 'anthropic', 'gemini', 'vllm']],
+                            placeholder="openai/ azure /vllm",
+                        ),
+                        dbc.Tooltip(
+                            "Input the provider like: openai, azure, anthropic, gemini or vllm",
+                            target="llm-provider-dpn",
+                            placement='right'
+                        ),
+                    ],
+                    width=4,
+                    className="mb-3"
+                )]
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Label("Model Name", html_for="llm-model-name-input"),
+                        dbc.Input(
+                            id="llm-model-name-input",
+                            placeholder="gpt-4o-mini/ meta-llama/Llama-3.2-1B-Instruct",
+                        ),
+                    ],
+                    width=4,
+                    className="mb-3"
+                ),
+                dbc.Col(
+                    [
+                        dbc.Label("API Key (Optional for vLLM)", html_for="llm-api-key-input"),
+                        dbc.Input(
+                            type="password",
+                            id="llm-api-key-input",
+                            placeholder="Enter the API key",
+                        ),
+                        dbc.Tooltip(
+                            "Optional for vLLM",
+                            target="llm-api-key-input",
+                        ),
+                    ],
+                    width=4,
+                    className="mb-3"
+                ),
+                dbc.Col(
+                    [
+                        dbc.Label("Base URL/ Endpoint", html_for="llm-model-url-input"),
+                        dbc.Input(
+                            id="llm-model-url-input",
+                            placeholder="Enter the base url (openai, anthropic..) or endpoint(azure)",
+                        ),
+                    ],
+                    width=4,
+                    className="mb-3"
+                ),
+            ],
+            className="g-3",
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Label("Azure Deployment (Optional)", html_for="llm-deployment-input"),
+                        dbc.Input(
+                            id="llm-deployment-input",
+                            placeholder="Enter your Azure Deployment Name",
+                        ),
+                    ],
+                    width=4,
+                    className="mb-3"
+                ),
+                dbc.Col(
+                    [
+                        dbc.Label("Azure API Version (Optional)", html_for="llm-api-version-input"),
+                        dbc.Input(
+                            id="llm-api-version-input",
+                            placeholder="like 2024-04-01-preview"
+                        ),
+                    ],
+                    width=4,
+                    className="mb-3"
+                ),
+            ],
+            className="g-3",
+        ),
+        dbc.Row(
+            [
+                dbc.Col(dbc.Button("Add", id="llm-credential-add-btn", n_clicks=0), width=1),
+            ], justify='start'
+        )
+    ]
+)
+
+tab0 = [
+    dbc.Row(
+        [
+            dbc.Tabs(
+                [
+                    dbc.Tab(label='Single LLM Credential', tab_id='tab0-subtab-0', children=tab0_subtab_0),
+                    dbc.Tab(label="Bulk Upload (JSON)", tab_id='tab0-subtab-1'),
+                ],
+                id="llm-credential-tabs",
+                active_tab='tab0-subtab-0',
+                className="mb-3"
+            ),
+        ]
+    ),
+    html.Br(),
+    html.Div(id="model-credential-verification-results", className="mb-3"),
+    dbc.Card(
+        [
+            dbc.CardHeader("Select your LLM model to continue"),
+            dbc.CardBody(
+                [
+                    dbc.Row(
+                        dbc.Col(
+                            dcc.Dropdown(
+                                id="llm-credential-dpn",
+                                # options=[{'label': i, 'value': i} for i in ['Pending to Add']],
+                            ),
+                            width=6,
+                            className="mb-3"
+                        )
+                    ),
+                    dbc.Row(
+                        dbc.Col(
+                            dbc.Button("Next", id="next-btn", color="primary", size="lg", n_clicks=0,
+                                       disabled=True),
+                            width="auto"
+                        ),
+                        justify="end"
+                    )
+                ]
+            )
+        ]
+    )
+]
+
 tab1 = [
     dbc.Row(
         [
@@ -226,16 +379,19 @@ layout = dbc.Card(
         dbc.CardHeader(
             dbc.Tabs(
                 [
-                    dbc.Tab(label="Food Calories and Nutrition Identification", tab_id="tab-1"),
-                    dbc.Tab(label="Analysis of Your Diet", tab_id="tab-2"),
+                    dbc.Tab(label='Step 1: Load your LLM Model', tab_id='tab-0', id='tab-0'),
+                    dbc.Tab(label="Step 2: Food Nutrition Identification", tab_id="tab-1", id='tab-1'),
+                    dbc.Tab(label="Step 3: Analysis of Your Diet", tab_id="tab-2", id='tab-2'),
                 ],
                 id="food-card-tabs",
-                active_tab="tab-1",
+                active_tab="tab-0",
 
             )
         ),
         dbc.CardBody(html.P(id="tab-food-card-content", className="card-text")),
-        dcc.Store(id="upload-food-image-path")
+        dcc.Store(id="upload-food-image-path"),
+        dcc.Store(id="all-verify-llm-model-credentials", data={}),
+        dcc.Store(id="select-llm-model", data=None),
     ]
 )
 
@@ -244,10 +400,102 @@ layout = dbc.Card(
 # # Callback Defined
 # =============================================================================
 
-
 def register_callback(app):
     import logging
     app.logger.setLevel(logging.DEBUG)
+
+    @app.callback(
+        Output("all-verify-llm-model-credentials", "data"),
+        Output("llm-credential-dpn", "options"),
+        Output("model-credential-verification-results", "children"),
+        Input("llm-credential-add-btn", "n_clicks"),
+        State("all-verify-llm-model-credentials", "data"),
+        State("llm-provider-dpn", "value"),
+        State("llm-model-name-input", "value"),
+        State("llm-api-key-input", "value"),
+        State("llm-model-url-input", "value"),
+        State("llm-deployment-input", "value"),
+        State("llm-api-version-input", "value"),
+        prevent_initial_call=True
+    )
+    def add_single_model_credentials(n_clicks, credential_dict,
+                                     provider, model_name, api_key, model_url, deployment, api_version):
+        if n_clicks is None or n_clicks <= 0:
+            raise PreventUpdate()
+        # Ensure we always have a mutable dict
+        credential_dict = credential_dict or {}
+
+        input_llm_cfg = {
+            "provider": provider,  # Required: "openai", "azure", "anthropic", "gemini", or "vllm"
+            "api_key": api_key,  # Required for all providers except "vllm"
+            "model": model_name,
+            "api_version": api_version,  # Only for "azure"
+            "endpoint": model_url,  # Only for "azure"
+            "deployment": deployment,  # Only for "azure"
+            "base_url": model_url,
+            "max_tokens": 10 # reduce cost for the test ping
+        }
+        try:
+            provider_model_id = f"{input_llm_cfg.get('provider')}_{input_llm_cfg.get('model')}"
+            test_llm = get_llm(with_struct_output=False, **input_llm_cfg)
+            test_response = test_llm.invoke(test_img_prompt)
+            input_llm_cfg.pop("max_tokens", None)
+            credential_dict[provider_model_id] = input_llm_cfg
+
+            test_res_div = [
+                dbc.Row([
+                    dbc.Col(html.H5(f'The added {provider_model_id}:')),
+                    dbc.Col(html.Span(dbc.Badge('Pass', color='success', className="me-1 text-decoration-none")))
+                ]),
+            ]
+
+        except Exception as e:
+            # Remove the model, in case it already existed
+            credential_dict.pop(provider_model_id, None)
+            test_res_div = [
+                dbc.Row([
+                    dbc.Col(html.H5(f'The added {provider_model_id}:')),
+                    dbc.Col(html.Span(dbc.Badge('Fail', color='danger', className="me-1 text-decoration-none")))
+                ]),
+                dbc.Row(dbc.Label(str(e)))]
+            print("Your input model is incorrect")
+
+        options_ = [ {"label": k, "value": k} for k in credential_dict.keys() ]
+
+        return credential_dict, options_, test_res_div
+
+    @app.callback(
+        Output("select-llm-model", 'data'),
+        Input("llm-credential-dpn", 'value')
+    )
+    def update_selected_llm(provide_model_id):
+        return provide_model_id
+
+    @app.callback(
+        Output('tab-1', 'disabled'),
+        Output('next-btn', 'disabled'),
+        Input("select-llm-model", 'data')
+    )
+    def enable_tab_btn(select_llm_model):
+        if select_llm_model is not None:
+            return False, False
+        else:
+            return True, True
+
+    @app.callback(
+        Output("food-card-tabs",'active_tab'),
+        Input('next-btn', 'n_clicks'),
+        State("select-llm-model", "data"),
+        prevent_initial_call=True
+    )
+    def jump_to_step2(n_clicks, selected_model):
+        if n_clicks is None or n_clicks == 0:
+            raise PreventUpdate()
+
+        return 'tab-1'
+
+
+
     @app.callback(
         Output('meal-type-dropdown', 'value'),
         Output('meal-datepicker', 'date'),
@@ -262,7 +510,9 @@ def register_callback(app):
         [Input("food-card-tabs", "active_tab")]
     )
     def tab_content(active_tab):
-        if active_tab == 'tab-1':
+        if active_tab == 'tab-0':
+            return tab0
+        elif active_tab == 'tab-1':
             return tab1
         elif active_tab == 'tab-2':
             return tab2
@@ -320,18 +570,21 @@ def register_callback(app):
                   Output('update_calorie_db_btn', 'style'),
                   Output('graph-thread-id', 'data'),
                   Output("load-anchor", 'children'),
-                  Input('upload-food-image-path', 'data')
+                  Input('upload-food-image-path', 'data'),
+                  Input('all-verify-llm-model-credentials', 'data'),
+                  Input('select-llm-model', 'data')
                   )
-    def llm_identifier(food_image_path):
-        if food_image_path is None:
+    def llm_identifier(food_image_path, credentials_dict, selected_llm_id):
+        if (food_image_path is None) or (not credentials_dict) or (selected_llm_id is None):
             raise PreventUpdate()
 
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
 
         # Input image to trigger the graph
-        state = {"image_path": food_image_path}
-        graph.invoke(state, config=config, interrupt_before=['user_feedback'])  # 跑到 user_feedback 前停
+        llm_cfg = credentials_dict[selected_llm_id]
+        state = {"image_path": food_image_path, "llm_cfg": llm_cfg}
+        graph.invoke(state, config=config, interrupt_before=['user_feedback'])
 
         # 拿最新结果
         response = graph.get_state(config).values["llm_output"]
@@ -348,15 +601,19 @@ def register_callback(app):
                   Input('user-feedback-submit-btn', 'n_clicks'),
                   State('user-feedback-input', 'value'),
                   State('graph-thread-id', 'data'),
+                  State('all-verify-llm-model-credentials', 'data'),
+                  State('select-llm-model', 'data'),
                   prevent_initial_call=True
                   )
-    def user_feedback_llm_re_identify(n_clicks, user_feedback_input, thread_id):
-        if not n_clicks or n_clicks == 0:
+    def user_feedback_llm_re_identify(n_clicks, user_feedback_input, thread_id,
+                                      credentials_dict, selected_llm_id):
+        if (not n_clicks) or (n_clicks == 0) (not credentials_dict) or (selected_llm_id is None):
             # 没点按钮时，也要给 Dash 正确的返回
             return no_update, no_update
         config = {"configurable": {"thread_id": thread_id}}
+        llm_cfg = credentials_dict[selected_llm_id]
         # 把用户反馈写入 state，再往前推进一步
-        graph.update_state(config, {"feedback": user_feedback_input})
+        graph.update_state(config, {"feedback": user_feedback_input, "llm_cfg": llm_cfg})
         graph.invoke({}, config=config)  # 执行 user_feedback 节点
 
         response_fb = graph.get_state(config).values["llm_output"]

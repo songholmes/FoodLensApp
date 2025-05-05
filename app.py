@@ -63,8 +63,8 @@ server = app.server
 app.server.secret_key = os.urandom(24)
 
 # Provider 1: Google
-google_client_id = os.getenv("GOOGLE_CLIENT_ID", None)  # Reads from system environment variables
-google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", None)
+google_client_id = os.getenv("GOOGLE_CLIENT_IDx", None)  # Reads from system environment variables
+google_client_secret = os.getenv("GOOGLE_CLIENT_SECRETx", None)
 
 # If the Google API credentials are not provided properly
 if google_client_id is None or google_client_secret is None:
@@ -81,9 +81,9 @@ else:
         # If you want a different URL prefix for the auth routes, specify here, e.g. url_prefix="/auth"
     )
     print('''
-    Google API credentials are provided, make sure you set up http://localhost:8050/oidc/callback in Oauth provider like
-    Google API properly. And if run with docker, it won't work with IP address, since google only support domain name or
-    localhost
+Google API credentials are provided, make sure you set up http://localhost:8050/oidc/callback in Oauth provider like
+Google API properly. And if run with docker, it won't work with IP address, since google only support domain name or
+localhost
     ''')
 
     ## if should be mentioned that in OIDCAuth.login_request, there is logic:
