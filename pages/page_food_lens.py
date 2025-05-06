@@ -48,16 +48,6 @@ test_img_prompt = [
 # %% ===========================================================================
 # # UI Layout
 # =============================================================================
-def form_input(id_, label, **kwargs):
-    """Helper to reduce clutter."""
-    return dbc.FormFloating(
-        [
-            dbc.Input(id=id_, **kwargs),
-            dbc.Label(label, html_for=id_)
-        ],
-        class_name="mb-2"
-    )
-
 tab0_subtab_0 = html.Div(
     [
         dbc.Row(
@@ -165,11 +155,33 @@ tab0_subtab_0 = html.Div(
     ]
 )
 
+tab0_subtab_1 = dbc.Container(
+    [
+        dcc.Upload(
+            id="llm-bulk-upload",
+            children=dbc.Button("Upload JSON File", color="secondary"),
+            multiple=False
+        ),
+        html.Div(id="bulk-upload-feedback", className="mt-3")
+    ],
+    fluid=True,
+    class_name="p-3"
+)
+
 tab0 = [
         dbc.Card(
             [
-                dbc.CardHeader("Single LLM Credential"),
-                dbc.CardBody(tab0_subtab_0)
+                dbc.CardBody(
+                        dbc.Tabs(
+                            [
+                                dbc.Tab(tab0_subtab_0, label='Single LLM Credential', tab_id='tab0-subtab-0'),
+                                dbc.Tab(tab0_subtab_1, label='Bulk Upload (JSON)', tab_id='tab0-subtab-1'),
+                            ],
+                            id="llm-credential-tabs",
+                            active_tab='tab0-subtab-0',
+                            class_name="mb-5"
+                        )
+                )
             ],
             class_name="mb-4 shadow-sm"
         ),
@@ -380,7 +392,8 @@ tab2 = [
 
 layout = dbc.Card(
     [
-        dbc.CardHeader(
+        dbc.CardHeader('Food Lens App'),
+        dbc.CardBody(
             dbc.Tabs(
                 [
                     dbc.Tab(label='Step 1: Load your LLM Model',
@@ -395,7 +408,6 @@ layout = dbc.Card(
 
             )
         ),
-        dbc.CardBody(html.P(id="tab-food-card-content", className="card-text")),
         dcc.Store(id="upload-food-image-path"),
         dcc.Store(id="all-verify-llm-model-credentials", data={}),
         dcc.Store(id="select-llm-model", data=None)
@@ -489,16 +501,14 @@ def register_callback(app):
     @app.callback(
         Output("llm-credential-dpn", "options"),
         Input("all-verify-llm-model-credentials", "data"),
-        Input("food-card-tabs", "active_tab"),
-        prevent_initial_call=True
+        Input("food-card-tabs", "active_tab")
     )
     def load_model_dropdown_options(credential_dict, active_tab):
-        print(active_tab)
         # only update when Tab 0 is activated
         if active_tab != "tab-0":
             raise PreventUpdate()
 
-        options_ = [ {"label": k, "value": k} for k in credential_dict.keys() ]
+        options_ = [{"label": k, "value": k} for k in credential_dict.keys()]
 
         return options_
 
@@ -514,7 +524,13 @@ def register_callback(app):
 
         return 'tab-1'
 
-
+    @app.callback(
+        Output('tab2', "children"),
+        [Input("food-card-tabs", "active_tab")]
+    )
+    def tab_content(active_tab):
+        if active_tab == 'tab-2':
+            return dbc.CardBody(tab2, class_name="mt-2")
 
     @app.callback(
         Output('meal-type-dropdown', 'value'),
@@ -524,14 +540,6 @@ def register_callback(app):
     def update_meal_setting(_):
         current_datetime_ = datetime.now(tz)
         return get_meal_time(current_datetime=current_datetime_), datetime.now(tz).date()
-
-    @app.callback(
-        Output("tab-food-card-content", "children"),
-        [Input("food-card-tabs", "active_tab")]
-    )
-    def tab_content(active_tab):
-        if active_tab == 'tab-2':
-            return tab2
 
     @app.callback(Output('food-image-upload', 'children'),
                   Output('upload-food-image-path', 'data'),
