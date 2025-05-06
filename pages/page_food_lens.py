@@ -13,6 +13,7 @@ import warnings
 from datetime import datetime, date
 from pathlib import Path
 import json
+import copy
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -43,6 +44,35 @@ test_img_prompt = [
      }
 ]
 
+
+def test_llm_credential_fun(llm_cfg):
+    test_llm_cfg = copy.deepcopy(llm_cfg)
+    test_llm_cfg['max_tokens'] = 10
+    try:
+        provider_model_id = f"{test_llm_cfg.get('provider')}_{test_llm_cfg.get('model')}"
+        test_llm = get_llm(with_struct_output=False, **test_llm_cfg)
+        test_llm.invoke(test_img_prompt)
+
+        response_status = True
+        response_row_element = html.Div(
+            dbc.Row([
+                dbc.Col(html.H5(f'Trying to add {provider_model_id}...')),
+                dbc.Col(html.Span(dbc.Badge('Pass', color='success', className="me-1 text-decoration-none")))
+            ])
+        )
+
+    except Exception as e:
+        # Remove the model, in case it already existed
+        response_status = False
+        response_row_element = html.Div(
+            [
+                dbc.Row([
+                    dbc.Col(html.H5(f'Trying to add {provider_model_id}...')),
+                    dbc.Col(html.Span(dbc.Badge('Fail', color='danger', className="me-1 text-decoration-none")))
+                ]),
+                dbc.Row(dbc.Label(str(e)))]
+        )
+    return provider_model_id, response_status, response_row_element
 
 
 # %% ===========================================================================
@@ -157,12 +187,32 @@ tab0_subtab_0 = html.Div(
 
 tab0_subtab_1 = dbc.Container(
     [
-        dcc.Upload(
-            id="llm-bulk-upload",
-            children=dbc.Button("Upload JSON File", color="secondary"),
-            multiple=False
+        dbc.Row(
+            [
+                dbc.Col(
+                    dcc.Upload(
+                        id="llm-credential-bulk-upload",
+                        children=dbc.Button(id='llm-credential-bulk-btn',
+                                            children="Upload JSON File", color="primary",
+                                            style={"marginRight": "0.5rem"}),
+                        multiple=False
+                    ), width='auto'
+                ),
+                dbc.Col(dbc.Button("ℹ️", id='download-json-template-btn', color="secondary", outline=True, size="sm"),
+                        width='auto'),
+                dbc.Tooltip(target='json-template-btn', children="Bulk upload LLM credential json Template",
+                            placement='right'),
+                dcc.Download(id="download_llm_credential-json-template")
+            ], align='center', class_name="g-0"
         ),
-        html.Div(id="bulk-upload-feedback", className="mt-3")
+        dcc.Loading(
+            id='bulk-upload-feedback-loading',
+            type='circle',
+            children=[dbc.Card(
+                dbc.CardBody(id="bulk-upload-feedback"), className="mt-2"
+            )]
+        )
+
     ],
     fluid=True,
     class_name="p-3"
@@ -450,35 +500,51 @@ def register_callback(app):
             "api_version": api_version,  # Only for "azure"
             "endpoint": model_url,  # Only for "azure"
             "deployment": deployment,  # Only for "azure"
-            "base_url": model_url,
-            "max_tokens": 10 # reduce cost for the test ping
+            "base_url": model_url
         }
-        try:
-            provider_model_id = f"{input_llm_cfg.get('provider')}_{input_llm_cfg.get('model')}"
-            test_llm = get_llm(with_struct_output=False, **input_llm_cfg)
-            test_response = test_llm.invoke(test_img_prompt)
-            input_llm_cfg.pop("max_tokens", None)
-            credential_dict[provider_model_id] = input_llm_cfg
+        provider_model_id_, response_status_, test_res_div_ = test_llm_credential_fun(input_llm_cfg)
+        if response_status_:
+            credential_dict[provider_model_id_] = input_llm_cfg
 
-            test_res_div = [
-                dbc.Row([
-                    dbc.Col(html.H5(f'The added {provider_model_id}:')),
-                    dbc.Col(html.Span(dbc.Badge('Pass', color='success', className="me-1 text-decoration-none")))
-                ]),
-            ]
+        return credential_dict, test_res_div_
 
-        except Exception as e:
-            # Remove the model, in case it already existed
-            credential_dict.pop(provider_model_id, None)
-            test_res_div = [
-                dbc.Row([
-                    dbc.Col(html.H5(f'The added {provider_model_id}:')),
-                    dbc.Col(html.Span(dbc.Badge('Fail', color='danger', className="me-1 text-decoration-none")))
-                ]),
-                dbc.Row(dbc.Label(str(e)))]
-            print("Your input model is incorrect")
+    @app.callback(
+        Output("download_llm_credential-json-template", "data"),
+        Input("download-json-template-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def download_json_template(n_clicks):
+        return dcc.send_file(
+            "assets/bulk_upload_llm_credentials_template.json"
+        )
 
-        return credential_dict, test_res_div
+    @app.callback(
+        Output("all-verify-llm-model-credentials", "data", allow_duplicate=True),
+        Output("bulk-upload-feedback", "children"),
+        Input('llm-credential-bulk-upload', 'contents'),
+        State('llm-credential-bulk-upload', 'filename'),
+        State("all-verify-llm-model-credentials", "data"),
+        prevent_initial_call=True
+    )
+    def bulk_check_llm_credentials(json_contents, json_file_name, ori_credential_dict):
+        if json_contents is None:
+            raise PreventUpdate()
+
+        ori_credential_dict = ori_credential_dict or {}
+
+        if json_contents is not None:
+            content_type, content_string = json_contents.split(',')
+            decoded = base64.b64decode(content_string)
+            loaded_llm_credentials_dict = json.loads(decoded)
+            test_res_div_list = []
+            for model_name, llm_cfg in loaded_llm_credentials_dict.items():
+                input_llm_cfg = copy.deepcopy(llm_cfg)
+                input_llm_cfg['model'] = model_name
+                provider_model_id_, response_status_, test_res_div_ = test_llm_credential_fun(input_llm_cfg)
+                test_res_div_list.append(dbc.Row(test_res_div_))
+                if response_status_:
+                    ori_credential_dict[provider_model_id_] = input_llm_cfg
+            return ori_credential_dict, dbc.Container(test_res_div_list)
 
     @app.callback(
         Output("select-llm-model", 'data'),
