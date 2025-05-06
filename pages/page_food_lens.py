@@ -804,11 +804,7 @@ def register_callback(app):
         if df_today.empty:
             raise PreventUpdate()
         else:
-            app.logger.info(f"df_today: {df_today}")
             df_today_latest = get_latest_creation_records(df_today)
-            app.logger.info(f"df_today_latest: {df_today_latest}")
-            app.logger.info("df_today_latest.dtypes:\n%s", df_today_latest.dtypes)
-            app.logger.info("protein_g:\n%s", df_today_latest['protein_g'].tolist())
             fig_today = get_plot_today_records_fig(df_today_latest)
 
             return fig_today
