@@ -48,6 +48,16 @@ test_img_prompt = [
 # %% ===========================================================================
 # # UI Layout
 # =============================================================================
+def form_input(id_, label, **kwargs):
+    """Helper to reduce clutter."""
+    return dbc.FormFloating(
+        [
+            dbc.Input(id=id_, **kwargs),
+            dbc.Label(label, html_for=id_)
+        ],
+        class_name="mb-2"
+    )
+
 tab0_subtab_0 = html.Div(
     [
         dbc.Row(
@@ -69,7 +79,8 @@ tab0_subtab_0 = html.Div(
                     ],
                     width=4,
                     className="mb-3"
-                )]
+                )
+            ]
         ),
         dbc.Row(
             [
@@ -145,54 +156,47 @@ tab0_subtab_0 = html.Div(
             [
                 dbc.Col(dbc.Button("Add", id="llm-credential-add-btn", n_clicks=0), width=1),
             ], justify='start'
+        ),
+        html.Br(),
+        dbc.Row(
+            [
+                html.Div(id="model-credential-verification-results", className="mb-3"),]
         )
     ]
 )
 
 tab0 = [
-    dbc.Row(
-        [
-            dbc.Tabs(
-                [
-                    dbc.Tab(label='Single LLM Credential', tab_id='tab0-subtab-0', children=tab0_subtab_0),
-                    dbc.Tab(label="Bulk Upload (JSON)", tab_id='tab0-subtab-1'),
-                ],
-                id="llm-credential-tabs",
-                active_tab='tab0-subtab-0',
-                className="mb-3"
-            ),
-        ]
-    ),
-    html.Br(),
-    html.Div(id="model-credential-verification-results", className="mb-3"),
-    dbc.Card(
-        [
-            dbc.CardHeader("Select your LLM model to continue"),
-            dbc.CardBody(
-                [
-                    dbc.Row(
-                        dbc.Col(
-                            dcc.Dropdown(
-                                id="llm-credential-dpn",
-                                # options=[{'label': i, 'value': i} for i in ['Pending to Add']],
-                            ),
-                            width=6,
-                            className="mb-3"
-                        )
-                    ),
-                    dbc.Row(
-                        dbc.Col(
-                            dbc.Button("Next", id="next-btn", color="primary", size="lg", n_clicks=0,
-                                       disabled=True),
-                            width="auto"
+        dbc.Card(
+            [
+                dbc.CardHeader("Single LLM Credential"),
+                dbc.CardBody(tab0_subtab_0)
+            ],
+            class_name="mb-4 shadow-sm"
+        ),
+        dbc.Card(
+            [
+                dbc.CardHeader("Select your LLM model to continue"),
+                dbc.CardBody(
+                    [
+                        dbc.Row(
+                            dbc.Col(
+                                dcc.Dropdown(id="llm-credential-dpn", className="mb-2"),
+                                md=6
+                            )
                         ),
-                        justify="end"
-                    )
-                ]
-            )
-        ]
-    )
-]
+                        dbc.Row(
+                            dbc.Col(
+                                dbc.Button("Next", id="next-btn", color="success", size="lg",
+                                           n_clicks=0, disabled=True),
+                                class_name="d-grid gap-2 d-md-flex justify-content-md-end"
+                            )
+                        )
+                    ]
+                )
+            ],
+            class_name="shadow-sm"
+        )
+    ]
 
 tab1 = [
     dbc.Row(
@@ -380,11 +384,11 @@ layout = dbc.Card(
             dbc.Tabs(
                 [
                     dbc.Tab(label='Step 1: Load your LLM Model',
-                            children=tab0, tab_id='tab-0', id='tab0'),
+                            children=dbc.CardBody(tab0, class_name="mt-2"), tab_id='tab-0', id='tab0'),
                     dbc.Tab(label="Step 2: Food Nutrition Identification",
-                            children=tab1, tab_id="tab-1", id='tab1'),
+                            children=dbc.CardBody(tab1, class_name="mt-2"), tab_id="tab-1", id='tab1'),
                     dbc.Tab(label="Step 3: Analysis of Your Diet",
-                            children=tab2, tab_id="tab-2", id='tab2'),
+                            tab_id="tab-2", id='tab2'),
                 ],
                 id="food-card-tabs",
                 active_tab="tab-0",
@@ -521,17 +525,13 @@ def register_callback(app):
         current_datetime_ = datetime.now(tz)
         return get_meal_time(current_datetime=current_datetime_), datetime.now(tz).date()
 
-    # @app.callback(
-    #     Output("tab-food-card-content", "children"),
-    #     [Input("food-card-tabs", "active_tab")]
-    # )
-    # def tab_content(active_tab):
-    #     if active_tab == 'tab-0':
-    #         return tab0
-    #     elif active_tab == 'tab-1':
-    #         return tab1
-    #     elif active_tab == 'tab-2':
-    #         return tab2
+    @app.callback(
+        Output("tab-food-card-content", "children"),
+        [Input("food-card-tabs", "active_tab")]
+    )
+    def tab_content(active_tab):
+        if active_tab == 'tab-2':
+            return tab2
 
     @app.callback(Output('food-image-upload', 'children'),
                   Output('upload-food-image-path', 'data'),
