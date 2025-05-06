@@ -24,13 +24,6 @@ python index.py           # http://localhost:3002
 ```
 
 ### Prepare your .env
-OPENAI API KEY:
-* Provide your own OPENAI_API_KEY to use the food lens app 
-```
-# Default use GPT-4o-mini for identification
-OPENAI_API_KEY	Used for LLM image analysis
-```
-<br>
 
 Google API Credentials: (Optional)<br>
 * Used to log Google User Name, if not provided, it will use dummy user name
