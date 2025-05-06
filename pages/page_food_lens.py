@@ -631,7 +631,7 @@ def register_callback(app):
                   )
     def user_feedback_llm_re_identify(n_clicks, user_feedback_input, thread_id,
                                       credentials_dict, selected_llm_id):
-        if (not n_clicks) or (n_clicks == 0) (not credentials_dict) or (selected_llm_id is None):
+        if (not n_clicks) or (n_clicks == 0) or (not credentials_dict) or (selected_llm_id is None):
             # 没点按钮时，也要给 Dash 正确的返回
             return no_update, no_update
         config = {"configurable": {"thread_id": thread_id}}
