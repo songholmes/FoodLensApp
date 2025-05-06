@@ -379,9 +379,12 @@ layout = dbc.Card(
         dbc.CardHeader(
             dbc.Tabs(
                 [
-                    dbc.Tab(label='Step 1: Load your LLM Model', tab_id='tab-0', id='tab-0'),
-                    dbc.Tab(label="Step 2: Food Nutrition Identification", tab_id="tab-1", id='tab-1'),
-                    dbc.Tab(label="Step 3: Analysis of Your Diet", tab_id="tab-2", id='tab-2'),
+                    dbc.Tab(label='Step 1: Load your LLM Model',
+                            children=tab0, tab_id='tab-0', id='tab0'),
+                    dbc.Tab(label="Step 2: Food Nutrition Identification",
+                            children=tab1, tab_id="tab-1", id='tab1'),
+                    dbc.Tab(label="Step 3: Analysis of Your Diet",
+                            children=tab2, tab_id="tab-2", id='tab2'),
                 ],
                 id="food-card-tabs",
                 active_tab="tab-0",
@@ -391,7 +394,7 @@ layout = dbc.Card(
         dbc.CardBody(html.P(id="tab-food-card-content", className="card-text")),
         dcc.Store(id="upload-food-image-path"),
         dcc.Store(id="all-verify-llm-model-credentials", data={}),
-        dcc.Store(id="select-llm-model", data=None),
+        dcc.Store(id="select-llm-model", data=None)
     ]
 )
 
@@ -406,7 +409,6 @@ def register_callback(app):
 
     @app.callback(
         Output("all-verify-llm-model-credentials", "data"),
-        Output("llm-credential-dpn", "options"),
         Output("model-credential-verification-results", "children"),
         Input("llm-credential-add-btn", "n_clicks"),
         State("all-verify-llm-model-credentials", "data"),
@@ -460,9 +462,7 @@ def register_callback(app):
                 dbc.Row(dbc.Label(str(e)))]
             print("Your input model is incorrect")
 
-        options_ = [ {"label": k, "value": k} for k in credential_dict.keys() ]
-
-        return credential_dict, options_, test_res_div
+        return credential_dict, test_res_div
 
     @app.callback(
         Output("select-llm-model", 'data'),
@@ -472,7 +472,7 @@ def register_callback(app):
         return provide_model_id
 
     @app.callback(
-        Output('tab-1', 'disabled'),
+        Output('tab1', 'disabled'),
         Output('next-btn', 'disabled'),
         Input("select-llm-model", 'data')
     )
@@ -481,6 +481,22 @@ def register_callback(app):
             return False, False
         else:
             return True, True
+
+    @app.callback(
+        Output("llm-credential-dpn", "options"),
+        Input("all-verify-llm-model-credentials", "data"),
+        Input("food-card-tabs", "active_tab"),
+        prevent_initial_call=True
+    )
+    def load_model_dropdown_options(credential_dict, active_tab):
+        print(active_tab)
+        # only update when Tab 0 is activated
+        if active_tab != "tab-0":
+            raise PreventUpdate()
+
+        options_ = [ {"label": k, "value": k} for k in credential_dict.keys() ]
+
+        return options_
 
     @app.callback(
         Output("food-card-tabs",'active_tab'),
@@ -505,17 +521,17 @@ def register_callback(app):
         current_datetime_ = datetime.now(tz)
         return get_meal_time(current_datetime=current_datetime_), datetime.now(tz).date()
 
-    @app.callback(
-        Output("tab-food-card-content", "children"),
-        [Input("food-card-tabs", "active_tab")]
-    )
-    def tab_content(active_tab):
-        if active_tab == 'tab-0':
-            return tab0
-        elif active_tab == 'tab-1':
-            return tab1
-        elif active_tab == 'tab-2':
-            return tab2
+    # @app.callback(
+    #     Output("tab-food-card-content", "children"),
+    #     [Input("food-card-tabs", "active_tab")]
+    # )
+    # def tab_content(active_tab):
+    #     if active_tab == 'tab-0':
+    #         return tab0
+    #     elif active_tab == 'tab-1':
+    #         return tab1
+    #     elif active_tab == 'tab-2':
+    #         return tab2
 
     @app.callback(Output('food-image-upload', 'children'),
                   Output('upload-food-image-path', 'data'),
